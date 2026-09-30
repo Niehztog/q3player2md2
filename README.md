@@ -1,10 +1,11 @@
 # q3player2md2
 
-Converts Quake III Arena player models into Quake II player models.
+Converts Quake III Arena and Team Arena player models into Quake II player models.
 
 Input: `models/players/<name>/` with `lower.md3`, `upper.md3`, `head.md3`,
 `animation.cfg` and the `*_<skin>.skin` files, read straight from `.pk3` files
-or directories.
+or directories. A Team Arena character is a body without a head of its own
+(`james`, `janet`) and a head from `models/players/heads/<name>/`.
 Output: `players/<name>/` with `tris.md2` in Quake II's 198-frame player layout,
 `weapon.md2` and `w_*.md2`, one skin per Q3 skin, icons, and sounds.
 
@@ -12,7 +13,11 @@ Output: `players/<name>/` with `tris.md2` in Quake II's 198-frame player layout,
 python3 q3player2md2.py --q3 ~/q2-dev/baseq3 --q2 ~/q2-dev/yquake2/release_/baseq2 sarge
 python3 q3player2md2.py --q3 ~/q2-dev/baseq3 --q3 custom.pk3 --q2 ... custom --preview
 python3 q3player2md2.py --q3 ~/q2-dev/baseq3 --q2 ... --all -o out
+python3 q3player2md2.py --q3 ~/q2-dev/baseq3 --q3 ~/q2-dev/missionpack --q2 ... fritzkrieg pi neptune
 ```
+
+Pass the Quake II mission packs' data as well (`--q2 .../baseq2 --q2 .../xatrix
+--q2 .../rogue`) to get their weapons in the hand.
 
 Then copy `out/players/<name>` into `baseq2/players/` and pick it in the player
 setup menu, or `set skin <name>/default`.
@@ -23,8 +28,9 @@ setup menu, or `set skin <name>/default`.
 | `--q2 PATH` | Q2 data (`baseq2` or `.pak`): the palette (`pics/colormap.pcx`) and the weapon models. Repeatable. |
 | `-o DIR` | Output directory, default `out`. |
 | `--name NAME` | Q2 model name, default the Q3 name. |
+| `--head HEAD` | Team Arena head for the body, from `models/players/heads/<head>/`; also the default Q2 name. Team Arena's own characters need no `--head`: `neptune` is found in `teaminfo.txt`. |
 | `--scale F` | Size relative to the Q3 model, feet stay on the floor. Default 0.9. |
-| `--all` | Convert every Q3 player model found. |
+| `--all` | Convert every Q3 player model found, and Team Arena's characters. |
 | `--no-vwep` | Only `weapon.md2`, no per-weapon models. |
 | `--no-sounds` | Do not copy sounds. |
 | `--preview` | Render `out/preview/<name>.png` from the written files. |
@@ -40,6 +46,7 @@ Needs Python 3 with NumPy and Pillow.
 | `<skin>.tga` | the same skin in true colour, same layout; q2pro and yquake2 load it in place of the PCX |
 | `<skin>_i.pcx`, `_i.tga` | 32x32 icon, from `icon_<skin>.tga` |
 | `ctf_r`, `ctf_b` | copies of the `red` and `blue` skins, which Q2 CTF forces on its teams |
+| `<team>`, `<team>_red`, `<team>_blue` | Team Arena's team skins (`stroggs`, `thefallen_red`, ...) |
 | `weapon.md2`, `w_*.md2` | Q2 weapon models held in the hand, same 198 frames |
 | `*.wav` | Q3 sounds under the names Q2 looks up in the model directory |
 
@@ -148,7 +155,28 @@ feathers in `harpy`) is transparent in those skins.
 Skin files written for another directory layout are common; a texture that is
 not found is looked for under its file name in the model's directory, and a
 surface missing from a `.skin` file matches a unique entry that differs by a
-suffix (both needed for id's own `tim` model).
+suffix (both needed for id's own `tim` model). Paths are unquoted as Q3's
+`CommaParse` does (Team Arena quotes the ones with a space, `"models/players/
+james/the fallen/..."`), and a doubled slash counts as one (a Team Arena shader
+maps `models/players/heads//ursula/ursula_e.tga`).
+
+### Team Arena characters
+
+A Team Arena character is a body and a head: `teaminfo.txt` lists name and
+sex, and the body is James's for a male, Janet's for a female, as in
+`ui_main.c`'s `Character_Parse`; `--all` converts them all, and each can be
+named on the command line. The head is `models/players/heads/<name>/<name>.md3`,
+which is also where Q3 looks for the head of a model that has none of its own
+(`CG_RegisterClientModelname`), so `james` alone is James. Its skins are the
+body's `lower_`/`upper_<skin>.skin` with the head's `head_<skin>.skin`, and its
+icon is the head's, as `CG_FindClientModelFile` and `CG_FindClientHeadFile` find
+them. The bodies' team skins in `<team>/` become `<team>`, `<team>_red` and
+`<team>_blue`. Sounds come from the body, like the cgame's.
+
+Team Arena's `scripts/models.shader` replaces baseq3's and changes the look of
+anarki, crash, doom, hunter, major, razor, slash and xaero. Convert the retail
+models from baseq3 alone to keep their Quake III look, and add the Team Arena
+data only for Team Arena's own models.
 
 ### Weapons
 
@@ -158,6 +186,14 @@ the same purpose (`resource/res/baseq2/models/weapons/*.cfg` there). They keep
 the world models' skins, so no textures are copied. The Reckoning and Ground
 Zero weapons are written when their models are in the Q2 data; a missing
 `w_*.md2` falls back to `weapon.md2` in the client.
+
+CTF's grapple has no world model. id's own `male/w_grapple.md2` holds Q2's
+unused flare gun (`models/weapons/g_flareg`, at scale 0.5 and in the same hand
+pose as every other weapon), so `w_grapple.md2` does too. Its scale and
+offset follow from where id put it relative to twelve other weapons whose male
+`w_*.md2` are the world model moved into the hand: their hand frame agrees to
+about a unit, and the grapple lands at offset (0, 0, -17), scale 0.45 against
+the others' 0.5.
 
 ### Sounds
 
@@ -179,6 +215,9 @@ sarge or mynx, as in Q3; Q2's medium fall (`fall2`) uses `pain100_1`, as Q3 does
 - All 29 retail Q3 models convert without problems. They were checked in
   q2pro (in game, third person), and sarge also in yquake2's player setup
   preview with the GL1 renderer (GL commands) and the software renderer (PCX).
+- Team Arena's 13 (fritzkrieg, pi and the 11 characters) convert without
+  warnings. neptune was checked in q2pro in third person holding each of the
+  19 weapons of Quake II, The Reckoning, Ground Zero and CTF.
 
 ## Limits
 

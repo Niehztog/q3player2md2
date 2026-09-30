@@ -36,6 +36,10 @@ WEAPONS = {
     'w_etfrifle.md2':     ('models/weapons/g_etf_rifle/tris.md2', 0.7, (8, 0, -16)),
     'w_plasma.md2':       ('models/weapons/g_beamer/tris.md2', 0.5, (2, 0, -22)),
     'w_plauncher.md2':    ('models/weapons/g_plaunch/tris.md2', 0.5, (7, 0, -16)),
+    # Threewave CTF: the grapple has no world model, and id's own male
+    # w_grapple.md2 holds the unused flare gun instead. Placed where id put
+    # it relative to the other weapons (fitted against their male w_*.md2)
+    'w_grapple.md2':      ('models/weapons/g_flareg/tris.md2', 0.45, (0, 0, -17)),
 }
 
 

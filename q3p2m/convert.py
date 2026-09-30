@@ -1,6 +1,7 @@
 """Convert one Quake III player model into a Quake II player model directory."""
 
 import os
+import re
 
 import numpy as np
 from PIL import Image
@@ -36,8 +37,8 @@ def _collapse(warnings):
     return ['%s %s: %s' % (v, ', '.join(where), msg) for (v, msg), where in grouped.items()]
 
 
-def _icon(q3, model_dir, variant, atlas, rgba_atlas):
-    path = q3.find('%sicon_%s.tga' % (model_dir, variant), ('.tga', '.jpg', '.png'))
+def _icon(q3, variant, atlas, rgba_atlas):
+    path = next(filter(None, (q3.find(p, ('.tga', '.jpg', '.png')) for p in variant.icons)), None)
     if path:
         img = images.load_image(q3.read(path))
     else:
@@ -45,22 +46,50 @@ def _icon(q3, model_dir, variant, atlas, rgba_atlas):
     return np.asarray(Image.fromarray(img, 'RGBA').resize((32, 32), Image.LANCZOS)), path is not None
 
 
-def convert(q3, q2, model, outdir, name=None, scale=0.9, vwep=True, with_sounds=True):
+def _head(q3, model_dir, model, head):
+    """Directory and file of the head: the model's own head.md3, else a Team
+    Arena head, models/players/heads/<head>/<head>.md3, which is also where Q3
+    looks for a model without a head of its own (CG_RegisterClientModelname)."""
+    if head is None and q3.exists(model_dir + 'head.md3'):
+        return model_dir, model_dir + 'head.md3'
+    head = head or model
+    head_dir = 'models/players/heads/%s/' % head
+    return head_dir, head_dir + head + '.md3'
+
+
+def team_arena_characters(q3):
+    """Team Arena's characters from teaminfo.txt: name -> (body model, head).
+    The body is James's for "male", Janet's for "female", else the model the
+    entry names (ui_main.c Character_Parse); the head has the character's name."""
+    if not q3.exists('teaminfo.txt'):
+        return {}
+    text = q3.read('teaminfo.txt').decode('latin1')
+    block = re.search(r'\bcharacters\s*\{((?:\s*\{[^{}]*\})*)\s*\}', text)
+    out = {}
+    for name, sex in re.findall(r'\{\s*"([^"]+)"\s+"([^"]+)"', block.group(1) if block else ''):
+        body = {'male': 'james', 'female': 'janet'}.get(sex.lower(), sex.lower())
+        out[name.lower()] = (body, name.lower())
+    return out
+
+
+def convert(q3, q2, model, outdir, name=None, scale=0.9, vwep=True, with_sounds=True, head=None):
     r = Result()
     name = name or model
     model_dir = 'models/players/%s/' % model
+    head_dir, head_md3 = _head(q3, model_dir, model, head)
+    dirs = {'lower': model_dir, 'upper': model_dir, 'head': head_dir}
     parts = {}
     for p in skins.PARTS:
-        path = model_dir + p + '.md3'
+        path = head_md3 if p == 'head' else model_dir + p + '.md3'
         if not q3.exists(path):
             raise FileNotFoundError('not found: %s' % path)
         parts[p] = bake.Part(md3.load(q3.read(path), '%s/%s' % (model, p)))
     cfg = animcfg.parse(q3.read(model_dir + 'animation.cfg').decode('latin1'), model_dir + 'animation.cfg')
-    variants = skins.find_variants(q3, model_dir)
+    variants = skins.find_variants(q3, dirs)
     if not variants:
         raise ValueError('%s: no complete set of lower/upper/head .skin files' % model)
 
-    skinset = skins.SkinSet(q3, model_dir, parts, variants)
+    skinset = skins.SkinSet(q3, dirs, parts, variants)
     for w in _collapse(skinset.warnings):
         r.warn(w)
     atlas = skins.Atlas(skinset, parts)
@@ -81,11 +110,11 @@ def convert(q3, q2, model, outdir, name=None, scale=0.9, vwep=True, with_sounds=
         rgba = atlas.render(vi)
         indices = quantize(rgba, alpha_cutout=cutout)
         hires = atlas.render(vi, atlas.hires) if atlas.hires > 1 else rgba
-        icon, had_icon = _icon(q3, model_dir, variant, atlas, rgba)
+        icon, had_icon = _icon(q3, variant, atlas, rgba)
         if not had_icon:
-            r.warn('%s: no icon_%s, used the head texture' % (variant, variant))
+            r.warn('%s: no icon, used the head texture' % variant.name)
         icon_idx = quantize(icon, alpha_cutout=True)
-        for skin in [variant] + ([TEAM_ALIASES[variant]] if variant in TEAM_ALIASES else []):
+        for skin in [variant.name] + ([TEAM_ALIASES[variant.name]] if variant.name in TEAM_ALIASES else []):
             images.write_pcx(os.path.join(out, skin + '.pcx'), indices, palette)
             images.write_tga(os.path.join(out, skin + '.tga'), hires, cutout)
             images.write_pcx(os.path.join(out, skin + '_i.pcx'), icon_idx, palette)
@@ -99,7 +128,7 @@ def convert(q3, q2, model, outdir, name=None, scale=0.9, vwep=True, with_sounds=
     r.info('skin: %dx%d PCX%s; variants: %s' % (
         atlas.width, atlas.height,
         '' if atlas.hires == 1 else ' (scaled to %.0f%%, TGA at %dx)' % (atlas.scale * 100, atlas.hires),
-        ', '.join(variants)))
+        ', '.join(v.name for v in variants)))
     if body.dropped:
         r.info('dropped %d degenerate triangles' % body.dropped)
     if body.doubled:

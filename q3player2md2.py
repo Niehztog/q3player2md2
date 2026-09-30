@@ -24,9 +24,12 @@ def main():
                     help='Q2 data (baseq2 directory or .pak): palette and weapon models; repeatable')
     ap.add_argument('-o', '--out', default='out', help='output directory (default: out)')
     ap.add_argument('--name', help='Q2 model name (default: the Q3 name); one model only')
+    ap.add_argument('--head', help='Team Arena head for the body (models/players/heads/<head>), '
+                                   'also the default Q2 name; one model only')
     ap.add_argument('--scale', type=float, default=0.9,
                     help='size relative to the Q3 model, feet stay on the floor (default 0.9)')
-    ap.add_argument('--all', action='store_true', help='convert every Q3 player model found')
+    ap.add_argument('--all', action='store_true',
+                    help="convert every Q3 player model found, and Team Arena's characters")
     ap.add_argument('--no-vwep', action='store_true', help='write weapon.md2 only, no w_*.md2')
     ap.add_argument('--no-sounds', action='store_true', help='do not copy player sounds')
     ap.add_argument('--preview', action='store_true',
@@ -41,20 +44,28 @@ def main():
     for p in args.q2:
         q2.add(os.path.expanduser(p))
 
+    # Team Arena characters are a body and a head: 'neptune' is james + heads/neptune
+    characters = convert.team_arena_characters(q3)
     models = list(args.models)
     if args.all:
-        models += sorted({n.split('/')[2] for n in q3.list('models/players/', '/animation.cfg')})
+        models += sorted({n.split('/')[2] for n in q3.list('models/players/', '/animation.cfg')}
+                         | set(characters))
     if not models:
         ap.error('name at least one model, or use --all')
-    if args.name and len(models) != 1:
-        ap.error('--name needs exactly one model')
+    if (args.name or args.head) and len(models) != 1:
+        ap.error('--name and --head need exactly one model')
 
     failed = 0
     for model in models:
-        print('== %s' % model)
+        if args.head:
+            body, head = model, args.head
+        else:
+            body, head = characters.get(model.lower(), (model, None))
+        name = args.name or args.head or model
+        print('== %s' % name + (' (%s, head %s)' % (body, head) if head and head != body else ''))
         try:
-            r = convert.convert(q3, q2, model, args.out, name=args.name, scale=args.scale,
-                                vwep=not args.no_vwep, with_sounds=not args.no_sounds)
+            r = convert.convert(q3, q2, body, args.out, name=name, scale=args.scale,
+                                vwep=not args.no_vwep, with_sounds=not args.no_sounds, head=head)
         except Exception as e:
             failed += 1
             print('   FAILED: %s' % e)

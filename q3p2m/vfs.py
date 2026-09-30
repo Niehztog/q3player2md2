@@ -5,6 +5,7 @@ archives override loose files, as they do in both engines' search paths.
 """
 
 import os
+import re
 import struct
 import zipfile
 
@@ -69,16 +70,16 @@ class VFS:
     # ----------------------------------------------------------------- queries
 
     def exists(self, name):
-        return name.lower() in self._files
+        return _key(name) in self._files
 
     def read(self, name):
         try:
-            return self._files[name.lower()][0]()
+            return self._files[_key(name)][0]()
         except KeyError:
             raise FileNotFoundError(name) from None
 
     def where(self, name):
-        return self._files[name.lower()][1]
+        return self._files[_key(name)][1]
 
     def list(self, prefix='', suffix=''):
         prefix, suffix = prefix.lower(), suffix.lower()
@@ -93,6 +94,12 @@ class VFS:
             if self.exists(base + ext):
                 return base + ext
         return None
+
+
+def _key(name):
+    """Lookup key: case-insensitive, and a doubled slash counts as one, as in
+    a Team Arena shader's map models/players/heads//ursula/ursula_e.tga."""
+    return re.sub('//+', '/', name).lower()
 
 
 def _read_range(path, pos, size):

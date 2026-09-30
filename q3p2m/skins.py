@@ -23,14 +23,50 @@ PAD = 2
 MAX_W, MAX_H = 640, 480
 
 
-def find_variants(vfs, model_dir):
-    names = []
-    for path in vfs.list(model_dir + 'lower_', '.skin'):
-        v = os.path.basename(path)[len('lower_'):-len('.skin')]
-        if all(vfs.exists('%s%s_%s.skin' % (model_dir, p, v)) for p in ('upper', 'head')):
-            names.append(v)
-    names.sort(key=lambda v: (v != 'default', v))
-    return names
+class Variant:
+    """One Q2 skin: the .skin file of each part and the icons to try."""
+
+    def __init__(self, name, files, icons):
+        self.name = name        # Q2 skin name
+        self.files = files      # part -> .skin path
+        self.icons = icons      # icon paths, first found wins
+
+
+def find_variants(vfs, dirs):
+    """Skins of a model whose parts live in dirs (part -> directory).
+
+    Team Arena bodies also have team skins in subdirectories,
+    <team>/lower_<skin>.skin, whose head skin is <team>/head_<skin> in the
+    head's directory if there is one, else head_<skin>; the icon likewise
+    (cgame CG_FindClientModelFile, CG_FindClientHeadFile). A team skin is
+    named <team>_<skin>, or <team> for its default."""
+    body, head = dirs['lower'], dirs['head']
+    teams = sorted({p[len(body):].rsplit('/', 1)[0] + '/'
+                    for p in vfs.list(body, '.skin') if '/' in p[len(body):]})
+    plain, team_skins = [], []
+    for team in [''] + teams:
+        for path in vfs.list(body + team + 'lower_', '.skin'):
+            v = os.path.basename(path)[len('lower_'):-len('.skin')]
+            upper = '%s%supper_%s.skin' % (body, team, v)
+            head_skin = next((h for h in ('%s%shead_%s.skin' % (head, team, v),
+                                          '%shead_%s.skin' % (head, v)) if vfs.exists(h)), None)
+            if not vfs.exists(upper) or head_skin is None:
+                continue
+            files = {'lower': path, 'upper': upper, 'head': head_skin}
+            icons = ['%s%sicon_%s.tga' % (head, team, v), '%sicon_%s.tga' % (head, v)]
+            if team:
+                name = team[:-1].replace(' ', '') + ('' if v == 'default' else '_' + v)
+                team_skins.append(((team, v != 'default', v), Variant(name, files, icons)))
+            else:
+                plain.append(((v != 'default', v), Variant(v, files, icons)))
+    return [v for _, v in sorted(plain, key=lambda e: e[0]) + sorted(team_skins, key=lambda e: e[0])]
+
+
+def _unquote(token):
+    """CommaParse reads a quoted token up to the closing quote: Team Arena
+    quotes the paths with a space ("models/players/james/the fallen/...")."""
+    token = token.strip()
+    return token[1:].partition('"')[0] if token.startswith('"') else token
 
 
 def parse_skin(text):
@@ -41,10 +77,10 @@ def parse_skin(text):
         if not line or line.startswith('//'):
             continue
         surf, _, shader = line.partition(',')
-        surf = surf.strip().lower()
+        surf = _unquote(surf).lower()
         if not surf or 'tag_' in surf:
             continue
-        out[surf] = shader.strip()
+        out[surf] = _unquote(shader)
     return out
 
 
@@ -60,7 +96,7 @@ def _lookup(skin, surface):
 class SkinSet:
     """Texture assignment of every (part, surface) in every variant."""
 
-    def __init__(self, vfs, model_dir, parts, variants):
+    def __init__(self, vfs, dirs, parts, variants):
         self.vfs = vfs
         self.variants = variants
         self.shaders = shaders.load_all(vfs)
@@ -68,26 +104,25 @@ class SkinSet:
         self.warnings = []
         for part in PARTS:
             model = parts[part].model
-            skins = [parse_skin(vfs.read('%s%s_%s.skin' % (model_dir, part, v)).decode('latin1'))
-                     for v in variants]
+            skins = [parse_skin(vfs.read(v.files[part]).decode('latin1')) for v in variants]
             for si, surf in enumerate(model.surfaces):
                 refs = []
                 for v, skin in zip(variants, skins):
                     name = _lookup(skin, surf.name)
                     if name is None:
                         name = surf.shaders[0] if surf.shaders else ''
-                    ref = shaders.resolve(name, vfs, self.shaders, model_dir)
+                    ref = shaders.resolve(name, vfs, self.shaders, dirs[part])
                     if ref.missing and refs:
                         # fall back to the first variant's texture, not a checkerboard
                         self.warnings.append('%s %s/%s: texture %s not found, using %s'
-                                             % (v, part, surf.name, ref.missing, variants[0]))
+                                             % (v.name, part, surf.name, ref.missing, variants[0].name))
                         ref = refs[0]
                     elif ref.missing:
                         self.warnings.append('%s %s/%s: texture %s not found'
-                                             % (v, part, surf.name, ref.missing))
+                                             % (v.name, part, surf.name, ref.missing))
                     elif ref.relocated:
                         self.warnings.append('%s %s/%s: %s not found, used %s'
-                                             % (v, part, surf.name, ref.relocated, ref.image))
+                                             % (v.name, part, surf.name, ref.relocated, ref.image))
                     refs.append(ref)
                 self.refs[(part, si)] = refs
 
