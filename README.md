@@ -145,6 +145,17 @@ own texture is used; a texture alpha-blended over a lower stage is composited
 onto it (sarge's `krusade` over fire), and over an environment map's average
 colour (hunter's chrome `harpy`). `alphaFunc` stages become cut-outs.
 
+A shader whose stages all blend onto what is behind with `GL_ONE` only adds
+light, and black adds nothing, so glows, beams and flares are painted on black.
+An MD2 draws every triangle solid, so such surfaces are left out wherever their
+part has something solid to show. Drawn, fritzkrieg's eye beam (a black
+texture on a 17-unit quad) and pi's laser stuck out of their faces as dark
+spikes, and slash's skate glows were dark squares at her feet. A skin that
+hides a surface with an additive black texture (sarge's cigar in `krusade` and
+`roderic`, uriel's wings in `zael`) gets it transparent. A part made only of
+additive surfaces (bones' hologram skin) keeps them, drawn solid. The
+converter lists what it left out.
+
 Cut-outs behave differently per renderer: id's and yquake2's GL renderers
 alpha-test skins, q2pro draws them opaque, software renderers draw palette
 index 255 in its (pink) colour. The PCX marks cut-outs with index 255; the TGA
@@ -228,7 +239,9 @@ sarge or mynx, as in Q3; Q2's medium fall (`fall2`) uses `pain100_1`, as Q3 does
   pitch), no independent legs and torso timing. gildor2/Quake2 renders Q3
   models natively for that, with its own protocol.
 - Shader effects (environment maps, glow, scrolling) do not survive the
-  flattening to one image.
+  flattening to one image, and surfaces that only add light are left out:
+  orbb's tail light, megan's visor shine and the eye glows of gaunt and ursula
+  go with them.
 - The hand holds Q2's pickup models, not Q3's weapons.
 - Q2 decides the gender for obituaries from the model name, not from
   `animation.cfg`'s `sex`.

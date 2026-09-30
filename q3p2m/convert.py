@@ -129,6 +129,14 @@ def convert(q3, q2, model, outdir, name=None, scale=0.9, vwep=True, with_sounds=
         atlas.width, atlas.height,
         '' if atlas.hires == 1 else ' (scaled to %.0f%%, TGA at %dx)' % (atlas.scale * 100, atlas.hires),
         ', '.join(v.name for v in variants)))
+    if skinset.left_out:
+        r.info('left out, Q3 only adds their light: %s'
+               % ', '.join('%s/%s (%s)' % e for e in skinset.left_out))
+    for (part, surf), where in skinset.hidden.items():
+        r.info('%s/%s hidden in %s, where Q3 only adds its light' % (part, surf, ', '.join(where)))
+    if skinset.kept:
+        r.info('drawn solid, although Q3 only adds their light: %s'
+               % ', '.join('%s/%s' % k for k in skinset.kept))
     if body.dropped:
         r.info('dropped %d degenerate triangles' % body.dropped)
     if body.doubled:

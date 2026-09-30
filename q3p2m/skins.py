@@ -10,6 +10,7 @@ true-colour TGA written next to each PCX then keeps the full resolution in
 the same layout, for engines that load replacement textures.
 """
 
+import copy
 import math
 import os
 
@@ -102,6 +103,9 @@ class SkinSet:
         self.shaders = shaders.load_all(vfs)
         self.refs = {}          # (part, surface index) -> [TextureRef per variant]
         self.warnings = []
+        self.left_out = []      # (part, surface, why): additive in the first variant
+        self.hidden = {}        # (part, surface) -> variants where only that one is additive
+        self.kept = []          # (part, surface): additive, but all its part has
         for part in PARTS:
             model = parts[part].model
             skins = [parse_skin(vfs.read(v.files[part]).decode('latin1')) for v in variants]
@@ -125,6 +129,31 @@ class SkinSet:
                                              % (v.name, part, surf.name, ref.relocated, ref.image))
                     refs.append(ref)
                 self.refs[(part, si)] = refs
+            self._leave_out_additive(part, model)
+
+    def _leave_out_additive(self, part, model):
+        """Surfaces whose shader only adds light are left out wherever the part
+        has something solid to show; if they are all the part has (bones'
+        hologram skin), they stay and are drawn as they are."""
+        keys = [(part, si) for si in range(len(model.surfaces))]
+        for vi, variant in enumerate(self.variants):
+            solid = any(not self.refs[k][vi].nodraw and not self.refs[k][vi].additive for k in keys)
+            for k in keys:
+                ref = self.refs[k][vi]
+                if not ref.additive or ref.nodraw:
+                    continue
+                name = model.surfaces[k[1]].name
+                if not solid:
+                    if vi == 0:
+                        self.kept.append((part, name))
+                    continue
+                hidden = copy.copy(ref)     # refs can be shared between variants
+                hidden.nodraw = True
+                self.refs[k][vi] = hidden
+                if vi == 0:
+                    self.left_out.append((part, name, 'additive ' + ref.additive))
+                elif not self.refs[k][0].nodraw:
+                    self.hidden.setdefault((part, name), []).append(variant.name)
 
     def visible(self, part, si):
         return not self.refs[(part, si)][0].nodraw

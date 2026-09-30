@@ -6,6 +6,12 @@ lightingDiffuse with the texture blended over it (xaero), a glow stage on top
 krusade skin). A Q2 skin can hold only one static image, so this picks the
 stage that carries the model's own texture and notes whether it needs an
 alpha cutout or an underlay to be flattened onto.
+
+A shader whose stages all blend onto what is behind with GL_ONE only adds
+light: black is invisible, so glows, beams and flares are drawn on black.
+Such surfaces are marked; skins.py leaves them out, since drawn as ordinary
+textured triangles they come out as solid cards (fritzkrieg's eye beam, a
+black texture, became a 17-unit black spike).
 """
 
 import os
@@ -29,13 +35,18 @@ class Shader:
         self.stages = []
         self.nodraw = False
         self.two_sided = False
+        self.sprite = False             # deformVertexes autoSprite or autoSprite2
+
+    def additive(self):
+        return bool(self.stages) and all(st.blend and st.blend[1] == 'gl_one' for st in self.stages)
 
 
 class TextureRef:
     def __init__(self, image=None, nodraw=False, alpha_test=False, underlay=None, missing=None,
-                 two_sided=False):
+                 two_sided=False, additive=None):
         self.image = image              # VFS path of the image, or None
         self.two_sided = two_sided      # Q3 draws it without back-face culling
+        self.additive = additive        # 'glow' or 'sprite' when the shader only adds light
         self.nodraw = nodraw
         self.alpha_test = alpha_test
         self.underlay = underlay        # (image path, (scale_s, scale_t), is env map) or None
@@ -43,7 +54,7 @@ class TextureRef:
         self.relocated = None           # original name, when found elsewhere
 
     def key(self):
-        return (self.image, self.alpha_test, self.underlay, self.missing)
+        return (self.image, self.alpha_test, self.underlay, self.missing, self.nodraw)
 
 
 def _lines(text):
@@ -122,6 +133,8 @@ def parse(text, shaders):
                     sh.nodraw = True
                 elif head == 'cull' and arg in ('none', 'disable', 'twosided'):
                     sh.two_sided = True
+                elif head == 'deformvertexes' and arg in ('autosprite', 'autosprite2'):
+                    sh.sprite = True
             else:
                 args = [a.lower() for a in t[1:]]
                 if head in ('map', 'clampmap') and args:
@@ -205,8 +218,9 @@ def _resolve(name, vfs, shaders):
                 under_image = under and vfs.find(under.map, IMAGE_EXTENSIONS)
                 if under_image:
                     underlay = (under_image, under.tcscale, under.tcgen == 'environment')
+            additive = ('sprite' if sh.sprite else 'glow') if sh.additive() else None
             return TextureRef(image=image, alpha_test=base.alphafunc is not None, underlay=underlay,
-                              two_sided=sh.two_sided)
+                              two_sided=sh.two_sided, additive=additive)
     image = vfs.find(name, IMAGE_EXTENSIONS)
     if image is None:
         return TextureRef(missing=name)

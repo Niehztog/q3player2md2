@@ -11,8 +11,10 @@
 #
 # Runs on a private Xvfb with q2pro's x11 driver: without vid_driver x11 q2pro
 # picks its Wayland driver and opens on the desktop session instead.
+# dmflags 512 (spawn farthest) with nobody else on the map always picks the
+# same spawn point, so runs can be compared.
 set -e
-[ $# -ge 6 ] || { sed -n '3,14p' "$0"; exit 2; }
+[ $# -ge 6 ] || { sed -n '3,15p' "$0"; exit 2; }
 q2pro=$(realpath "$1"); gamelib=$(realpath "$2"); baseq2=$(realpath "$3")
 players=$(realpath "$4"); out=$5
 shift 5
@@ -45,7 +47,7 @@ cp "$gamelib" "$work/baseq2/"
 env -u WAYLAND_DISPLAY xvfb-run -a -s "-screen 0 1024x768x24" "$q2pro" \
     +set vid_driver x11 +set basedir "$work" +set homedir "$work/home" +set libdir "$work" \
     +set vid_fullscreen 0 +set vid_geometry 800x600 +set s_enable 0 \
-    +set deathmatch 1 +set cheats 1 +exec shots.cfg > "$work/q2pro.log" 2>&1 || true
+    +set deathmatch 1 +set dmflags 512 +set cheats 1 +exec shots.cfg > "$work/q2pro.log" 2>&1 || true
 
 mkdir -p "$out"
 i=0
