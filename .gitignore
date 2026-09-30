@@ -1,0 +1,23 @@
+__pycache__/
+out/
+
+# Game data is read from the user's own copies at run time and never belongs
+# here: archives, models, maps, images, sounds, Q3 model definitions.
+*.pak
+*.pk3
+*.pkz
+*.zip
+*.md2
+*.md3
+*.mdl
+*.bsp
+*.pcx
+*.tga
+*.jpg
+*.jpeg
+*.png
+*.wav
+*.ogg
+*.skin
+*.shader
+animation.cfg
